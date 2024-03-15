@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Real-time Transcription with Whisper</title>
+    <script src="https://cdn.socket.io/4.4.1/socket.io.min.js"></script>
+    <script src="https://www.WebRTC-Experiment.com/RecordRTC.js"></script>
+    <style>
+      .container {
+        display: flex;
+        width: 100%;
+      }
+      .half {
+        flex: 1;
+        padding: 10px;
+        box-sizing: border-box;
+        max-width: 45%;
+        text-wrap: wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <label for="language-select">Choose a language:</label>
+    <select id="language-select">
+      <!-- Google Cloud Speech-to-Text Supported Languages -->
+      <option value="af-ZA">Afrikaans (South Africa)</option>
+      <option value="ar-XA">Arabic</option>
+      <option value="bn-BD">Bengali (Bangladesh)</option>
+      <option value="bg-BG">Bulgarian (Bulgaria)</option>
+      <option value="ca-ES">Catalan (Spain)</option>
+      <option value="yue-Hant-HK">
+        Chinese, Cantonese (Traditional Hong Kong)
+      </option>
+      <option value="zh">Chinese (Simplified)</option>
+      <option value="zh-TW">Chinese, Mandarin (Traditional Taiwan)</option>
+      <option value="hr-HR">Croatian (Croatia)</option>
+      <option value="cs-CZ">Czech (Czech Republic)</option>
+      <option value="da-DK">Danish (Denmark)</option>
+      <option value="nl-NL">Dutch (Netherlands)</option>
+      <option value="en-US">English (United States)</option>
+      <option value="et-EE">Estonian (Estonia)</option>
+      <option value="fil-PH">Filipino (Philippines)</option>
+      <option value="fi-FI">Finnish (Finland)</option>
+      <option value="fr-FR">French (France)</option>
+      <option value="gl-ES">Galician (Spain)</option>
+      <option value="ka-GE">Georgian (Georgia)</option>
+      <option value="de-DE">German (Germany)</option>
+      <option value="el-GR">Greek (Greece)</option>
+      <option value="gu-IN">Gujarati (India)</option>
+      <option value="hi-IN">Hindi (India)</option>
+      <option value="hu-HU">Hungarian (Hungary)</option>
+      <option value="is-IS">Icelandic (Iceland)</option>
+      <option value="id-ID">Indonesian (Indonesia)</option>
+      <option value="it-IT">Italian (Italy)</option>
+      <option value="ja-JP">Japanese (Japan)</option>
+      <option value="jv-ID">Javanese (Indonesia)</option>
+      <option value="kn-IN">Kannada (India)</option>
+      <option value="ko-KR">Korean (South Korea)</option>
+      <option value="lv-LV">Latvian (Latvia)</option>
+      <option value="lt-LT">Lithuanian (Lithuania)</option>
+      <option value="mk-MK">Macedonian (North Macedonia)</option>
+      <option value="ms-MY">Malay (Malaysia)</option>
+      <option value="ml-IN">Malayalam (India)</option>
+      <option value="mt-MT">Maltese (Malta)</option>
+      <option value="mr-IN">Marathi (India)</option>
+      <option value="nb-NO">Norwegian Bokmål (Norway)</option>
+      <option value="fa-IR">Persian (Iran)</option>
+      <option value="pl-PL">Polish (Poland)</option>
+      <option value="pt-PT">Portuguese (Portugal)</option>
+      <option value="pa-Guru-IN">Punjabi (Gurmukhi India)</option>
+      <option value="ro-RO">Romanian (Romania)</option>
+      <option value="ru-RU">Russian (Russia)</option>
+      <option value="sr-RS">Serbian (Serbia)</option>
+      <option value="si-LK">Sinhala (Sri Lanka)</option>
+      <option value="sk-SK">Slovak (Slovakia)</option>
+      <option value="sl-SI">Slovenian (Slovenia)</option>
+      <option value="es-ES">Spanish (Spain)</option>
+      <option value="sw-KE">Swahili (Kenya)</option>
+      <option value="sv-SE">Swedish (Sweden)</option>
+      <option value="ta-IN">Tamil (India)</option>
+      <option value="te-IN">Telugu (India)</option>
+      <option value="th-TH">Thai (Thailand)</option>
+      <option value="tr-TR">Turkish (Turkey)</option>
+      <option value="uk-UA">Ukrainian (Ukraine)</option>
+      <option value="ur-PK">Urdu (Pakistan)</option>
+      <option value="uz-UZ">Uzbek (Uzbekistan)</option>
+      <option value="vi-VN">Vietnamese (Vietnam)</option>
+      <option value="cy-GB">Welsh (United Kingdom)</option>
+      <option value="zu-ZA">Zulu (South Africa)</option>
+    </select>
+    <button id="start-recording">Start Streaming</button>
+    <button id="stop-recording" disabled>Stop Streaming</button>
+
+    <div class="container">
+      <pre id="results" class="half"></pre>
+      <pre id="questions" class="half"></pre>
+    </div>
+
+    <script>
+      // const socket = io("http://localhost:5001");
+      const socket = io("http://44.201.67.77/");
+
+      let recorder;
+      const languageSelect = document.getElementById("language-select");
+
+      document.getElementById("start-recording").onclick = function () {
+        this.disabled = true;
+        navigator.mediaDevices
+          .getUserMedia({ audio: true })
+          .then(function (stream) {
+            recorder = RecordRTC(stream, {
+              type: "audio",
+              mimeType: "audio/wav",
+              sampleRate: 44100,
+              recorderType: StereoAudioRecorder,
+              numberOfAudioChannels: 1,
+              timeSlice: 4000,
+              desiredSampRate: 16000,
+              ondataavailable: function (blob) {
+                const reader = new FileReader();
+                reader.onload = function () {
+                  const base64data = reader.result.split(",")[1];
+                  const selectedLanguage = languageSelect.value;
+                  socket.emit("stream_audio", {
+                    audio: base64data,
+                    language: selectedLanguage,
+                  });
+                };
+                reader.readAsDataURL(blob);
+              },
+            });
+            recorder.startRecording();
+            document.getElementById("stop-recording").disabled = false;
+          });
+      };
+
+      document.getElementById("stop-recording").onclick = function () {
+        this.disabled = true;
+        recorder.stopRecording();
+        document.getElementById("start-recording").disabled = false;
+      };
+
+      socket.on("transcription_result", function (data) {
+        if (data.transcription.trim() === "") return;
+        document.getElementById("results").textContent +=
+          data.transcription + "\n";
+      });
+
+      // Handle question event
+      socket.on("question", function (data) {
+        document.getElementById("questions").textContent +=
+          data.question + "\n";
+      });
+    </script>
+  </body>
+</html>
